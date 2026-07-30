@@ -1,5 +1,4 @@
 import os
-import time
 from dotenv import load_dotenv
 from services.hubspot_service import HubSpotService
 from services.ai_service import AIService
@@ -9,39 +8,28 @@ load_dotenv()
 
 def executar_limpeza():
     print("🚀 Iniciando varredura no HubCleaner AI...")
-    
+
     hubspot = HubSpotService()
     ai = AIService()
     chat = ChatService()
 
-    # Usando o nome correto do método: buscar_contatos()
     contatos = hubspot.buscar_contatos()
     print(f"Encontrados {len(contatos)} contatos para análise.")
 
-    spams_detectados = []
+    contatos_para_remover = []
 
-    for contato in contatos:
-        props = getattr(contato, "properties", {}) or {}
-        email = props.get("email", "")
-        firstname = props.get("firstname", "")
-        lastname = props.get("lastname", "")
-        nome_completo = f"{firstname} {lastname}".strip()
-
-        if email:
-            # Chama o método de análise
-            is_spam = ai.analisar_contato_spam(email, nome_completo)
-            
-            if is_spam:
-                spams_detectados.append(f"⚠️ {nome_completo} ({email})")
+    for idx, contato in enumerate(contatos, start=1):
+        print(f"Analisando contato {idx}/{len(contatos)}: {contato.get('email')}")
+        resultado = ai.analisar_contato(contato)
         
-        # Pausa de 4 segundos para respeitar os limites do Gemini Free
-        time.sleep(4)
+        if "REMOVER" in resultado.upper():
+            contatos_para_remover.append(contato)
 
-    if spams_detectados:
-        mensagem = "🚨 **Relatório de Leads Spam Encontrados:**\n" + "\n".join(spams_detectados)
-        chat.enviar_notificacao(mensagem)
-    else:
-        chat.enviar_notificacao("✅ Varredura concluída! Nenhum contato suspeito foi identificado.")
+    print("\n📤 Enviando resumo para o Discord...")
+    chat.enviar_resumo(
+        total_analisados=len(contatos),
+        total_remover=len(contatos_para_remover)
+    )
 
 if __name__ == "__main__":
     executar_limpeza()

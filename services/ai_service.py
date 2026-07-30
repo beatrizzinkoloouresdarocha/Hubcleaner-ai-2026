@@ -1,31 +1,27 @@
+import requests
 import os
-import time
-from google import genai
 
-class AIService:
+class ChatService:
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        self.client = genai.Client(api_key=api_key)
+        # Defina DISCORD_WEBHOOK_URL no seu arquivo .env
+        self.webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
 
-    def analisar_contato_spam(self, email, nome=""):
-        """Analisa cadastros para identificar spam ou testes."""
-        prompt = (
-            f"Analise o seguinte cadastro de CRM e determine se parece ser um teste, spam ou e-mail temporário falso.\n"
-            f"Nome: {nome}\n"
-            f"E-mail: {email}\n\n"
-            f"Responda apenas com 'SPAM' se for falso/teste ou 'VALIDO' se parecer um usuário legítimo."
-        )
+    def enviar_resumo(self, total_analisados, total_remover):
+        if not self.webhook_url or not self.webhook_url.startswith("http"):
+            print("Erro: URL do Webhook do Discord não está configurada corretamente no .env")
+            return
 
-        # Pausa necessária para respeitar o limite de 5 requisições/min no plano gratuito
-        time.sleep(12)
+        mensagem = {
+            "content": f"🚨 **HubCleaner AI - Relatório de Varredura** 🚨\n\n"
+                       f"📊 **Total de contatos analisados:** {total_analisados}\n"
+                       f"🗑️ **Contatos recomendados para remoção:** {total_remover}"
+        }
 
         try:
-            response = self.client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt,
-            )
-            resultado = response.text.strip().upper()
-            return "SPAM" in resultado
+            response = requests.post(self.webhook_url, json=mensagem)
+            if response.status_code == 204:
+                print("✅ Alerta enviado com sucesso para o Discord!")
+            else:
+                print(f"Erro ao enviar para o Discord: Status {response.status_code} - {response.text}")
         except Exception as e:
-            print(f"Erro na análise do Gemini: {e}")
-            return False
+            print(f"Erro ao conectar com o Discord: {e}")
