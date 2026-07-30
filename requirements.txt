@@ -1,0 +1,6 @@
+hubspot-api-client
+google-genai
+python-dotenv
+requests
+pydantic
+schedule
