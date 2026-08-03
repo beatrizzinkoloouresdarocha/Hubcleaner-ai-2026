@@ -1,33 +1,29 @@
 import os
-import requests
+import time
+from google import genai
 
-class ChatService:
+class AIService:
     def __init__(self):
-        self.webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+        self.client = genai.Client()
 
-    def enviar_notificacao(self, mensagem_ou_total, total_remover=None):
-        if not self.webhook_url or not self.webhook_url.startswith("http"):
-            print("⚠️ URL do Webhook do Discord não configurada ou inválida no .env")
-            return
+    def analisar_contato(self, contato):
+        prompt = f"""
+        Analise o seguinte contato do CRM e determine se o e-mail ou dados parecem ser um teste, inválidos ou spam:
+        - Nome: {contato.get('firstname', '')} {contato.get('lastname', '')}
+        - Email: {contato.get('email', '')}
 
-        # Se for passado o número total e o número para remover
-        if isinstance(mensagem_ou_total, int) and total_remover is not None:
-            texto = (
-                f"🚨 **HubCleaner AI - Relatório de Varredura** 🚨\n\n"
-                f"📊 **Total de contatos analisados:** {mensagem_ou_total}\n"
-                f"🗑️ **Contatos para remoção/spam:** {total_remover}"
-            )
-        else:
-            # Se for passada uma string direta
-            texto = str(mensagem_ou_total)
-
-        payload = {"content": texto}
+        Responda apenas com:
+        - 'MANTER' se o contato parecer legítimo.
+        - 'REMOVER' se for spam, teste ou e-mail inválido.
+        """
 
         try:
-            response = requests.post(self.webhook_url, json=payload)
-            if response.status_code in [200, 204]:
-                print("✅ Alerta enviado com sucesso para o Discord!")
-            else:
-                print(f"Erro ao enviar para o Discord: Status {response.status_code} - {response.text}")
+            time.sleep(4)  # Pausa de 4 segundos para evitar limite de requisições por minuto
+            response = self.client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt,
+            )
+            return response.text.strip()
         except Exception as e:
-            print(f"Erro na conexão com o Discord: {e}")
+            print(f"Erro na análise do Gemini: {e}")
+            return "ERRO"
