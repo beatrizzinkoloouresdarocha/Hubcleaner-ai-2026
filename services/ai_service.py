@@ -1,47 +1,47 @@
 import os
-from google import genai
+from hubspot import HubSpot
 
-class AIService:
+class HubSpotService:
     def __init__(self):
-        # Inicializa o cliente oficial da biblioteca 'google-genai'
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            print("⚠️ ATENÇÃO: GEMINI_API_KEY não foi encontrada no arquivo .env!")
-        self.client = genai.Client(api_key=api_key)
+        token = os.getenv("HUBSPOT_ACCESS_TOKEN")
+        if not token:
+            print("⚠️ ATENÇÃO: HUBSPOT_ACCESS_TOKEN não foi encontrado no .env!")
+        self.client = HubSpot(access_token=token)
 
-    def analisar_contato(self, contato_info):
-        """
-        Analisa as informações do contato e determina se deve ser REMOVIDO ou MANTIDO.
-        Aceita tanto uma string formatada quanto um dicionário com os dados do contato.
-        """
-        # Se for passado um dicionário, converte em uma string descritiva
-        if isinstance(contato_info, dict):
-            email = contato_info.get("email", "")
-            firstname = contato_info.get("firstname", "")
-            lastname = contato_info.get("lastname", "")
-            contato_str = f"Nome: {firstname} {lastname}, Email: {email}"
-        else:
-            contato_str = str(contato_info)
-
-        # Prompt estruturado para garantir resposta precisa
-        prompt = (
-            "Você é um assistente especialista em qualificação de leads e limpeza de CRM.\n"
-            "Analise as seguintes informações do contato:\n"
-            f"'{contato_str}'\n\n"
-            "Regras de avaliação:\n"
-            "1. Responda 'REMOVER' se o e-mail for claramente inválido, um e-mail temporário, "
-            "um endereço de teste (ex: test@test.com, asdf@gmail.com), spam ou contiver palavrões/caracteres aleatórios.\n"
-            "2. Responda 'MANTER' se parecer um contato real ou legítimo.\n\n"
-            "Sua resposta DEVE começar OBRIGATORIAMENTE com a palavra 'REMOVER' ou 'MANTER', "
-            "seguida de uma breve justificativa de uma frase."
-        )
-
+    def buscar_contatos(self):
         try:
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
+            # Solicita os contatos trazendo as propriedades necessárias
+            resposta = self.client.crm.contacts.get_all(
+                properties=["email", "firstname", "lastname"]
             )
-            return response.text.strip()
+            
+            contatos_limpos = []
+
+            for contato in resposta:
+                # Extrai o dicionário de propriedades do objeto SDK
+                props = getattr(contato, 'properties', {}) or {}
+                
+                # Monta o dicionário nativo com ID e atributos
+                contato_dict = {
+                    'id': getattr(contato, 'id', None),
+                    'email': props.get('email', 'sem-email'),
+                    'firstname': props.get('firstname', ''),
+                    'lastname': props.get('lastname', '')
+                }
+                
+                contatos_limpos.append(contato_dict)
+
+            return contatos_limpos
+
         except Exception as e:
-            print(f"❌ Erro ao analisar contato com o Gemini: {e}")
-            return "MANTER (Erro na análise)"
+            print(f"❌ Erro ao buscar contatos no HubSpot: {e}")
+            return []
+
+    def deletar_contato(self, contato_id):
+        try:
+            self.client.crm.contacts.basic_api.archive(contact_id=str(contato_id))
+            print(f"✅ Contato ID {contato_id} removido com sucesso.")
+            return True
+        except Exception as e:
+            print(f"❌ Erro ao deletar contato ID {contato_id}: {e}")
+            return False
