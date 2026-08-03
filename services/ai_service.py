@@ -1,5 +1,12 @@
 import os
+from pydantic import BaseModel, Field
 from google import genai
+from google.genai import types
+
+class ResultadoAnaliseContato(BaseModel):
+    valido: bool = Field(description="Indica se o contato é um lead válido (True) ou inválido/spam/teste (False)")
+    motivo: str = Field(description="Explicação sucinta sobre o motivo da classificação")
+    categoria: str = Field(description="Categoria do contato: Ex: Lead Real, Spam, E-mail Temporário, Teste, Nome Fictício")
 
 class AIService:
     def __init__(self):
@@ -8,42 +15,52 @@ class AIService:
             print("⚠️ ATENÇÃO: GEMINI_API_KEY não foi encontrada no .env!")
         self.client = genai.Client(api_key=api_key)
 
-    def analisar_contato(self, contato):
+    def _extrair_propriedade(self, props, chave: str, default: str = "") -> str:
+        """Auxiliar para extrair valores de dicionários ou objetos com segurança."""
+        if isinstance(props, dict):
+            valor = props.get(chave, default)
+        else:
+            valor = getattr(props, chave, default)
+        return valor if valor is not None else default
+
+    def analisar_contato(self, contato) -> ResultadoAnaliseContato:
+        # Extração segura de propriedades do objeto ou dicionário do HubSpot
+        if isinstance(contato, dict):
+            props = contato.get('properties', contato)
+        else:
+            props = getattr(contato, 'properties', contato) or {}
+
+        email = self._extrair_propriedade(props, 'email', '')
+        firstname = self._extrair_propriedade(props, 'firstname', '')
+        lastname = self._extrair_propriedade(props, 'lastname', '')
+
+        nome = f"{firstname} {lastname}".strip() or "Não informado"
+
+        # Prompt otimizado para classificação mais precisa
+        prompt = f"""
+        Você é um auditor de qualidade de leads de CRM.
+        Analise os dados abaixo e classifique o contato:
+
+        - Nome completo: {nome}
+        - E-mail: {email}
+
+        Critérios de avaliação:
+        1. Marque como INVÁLIDO (`valido = False`) se:
+           - O nome ou e-mail contiver sequências aleatórias ou testes (ex: "asdf", "teste", "123").
+           - O domínio for descartável ou temporário (ex: mailinator, tempmail, guerrilla).
+           - O e-mail for obviamente fictício ou malformado.
+        2. Marque como VÁLIDO (`valido = True`) se parecer um contato humano legítimo.
         """
-        Recebe o objeto ou dicionário do contato e retorna a decisão da IA.
-        """
-        try:
-            # Tratamento para aceitar tanto dicionário quanto objeto SimplePublicObjectWithAssociations
-            if isinstance(contato, dict):
-                props = contato.get('properties', contato)
-            else:
-                props = getattr(contato, 'properties', {}) or {}
 
-            # Extrai os dados das propriedades do HubSpot com fallback seguro
-            email = props.get('email', '') if isinstance(props, dict) else getattr(props, 'email', '')
-            firstname = props.get('firstname', '') if isinstance(props, dict) else getattr(props, 'firstname', '')
-            lastname = props.get('lastname', '') if isinstance(props, dict) else getattr(props, 'lastname', '')
-
-            nome = f"{firstname} {lastname}".strip()
-
-            prompt = f"""
-            Analise as informações do seguinte contato do CRM HubSpot para identificar se é um lead inválido, spam ou de teste:
-            - Nome: {nome}
-            - E-mail: {email}
-            
-            Responda em formato JSON simples:
-            {{
-                "valido": true/false,
-                "motivo": "Explicação breve"
-            }}
-            """
-
-            resposta = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
+        # Chamada ao modelo oficial Gemini 1.5 Flash
+        resposta = self.client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ResultadoAnaliseContato,
+                temperature=0.1,  # Baixa temperatura para respostas mais consistentes e determinísticas
             )
+        )
 
-            return resposta.text
-        except Exception as e:
-            print(f"❌ Erro ao analisar contato com Gemini: {e}")
-            return None
+        return ResultadoAnaliseContato.model_validate_json(resposta.text)
