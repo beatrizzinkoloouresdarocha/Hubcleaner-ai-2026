@@ -1,37 +1,29 @@
 import os
-from hubspot import HubSpot
+import time
+from google import genai
 
-class HubSpotService:
+class AIService:
     def __init__(self):
-        token = os.getenv("HUBSPOT_ACCESS_TOKEN")
-        self.client = HubSpot(access_token=token)
+        self.client = genai.Client()
 
-    def buscar_contatos(self):
+    def analisar_contato(self, contato):
+        prompt = f"""
+        Analise o seguinte contato do CRM e determine se o e-mail ou dados parecem ser um teste, inválidos ou spam:
+        - Nome: {contato.get('firstname', '')} {contato.get('lastname', '')}
+        - Email: {contato.get('email', '')}
+
+        Responda apenas com:
+        - 'MANTER' se o contato parecer legítimo.
+        - 'REMOVER' se for spam, teste ou e-mail inválido.
+        """
+
         try:
-            api_response = self.client.crm.contacts.get_all(
-                properties=["email", "firstname", "lastname"]
+            time.sleep(4)  # Pausa para evitar rate limit na API
+            response = self.client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt,
             )
-            
-            contatos_formatados = []
-            for contato in api_response:
-                props = contato.properties or {}
-                contatos_formatados.append({
-                    "id": contato.id,
-                    "email": props.get("email", ""),
-                    "firstname": props.get("firstname", ""),
-                    "lastname": props.get("lastname", "")
-                })
-            
-            return contatos_formatados
+            return response.text.strip()
         except Exception as e:
-            print(f"Erro ao buscar contatos no HubSpot: {e}")
-            return []
-
-    def deletar_contato(self, contato_id):
-        try:
-            self.client.crm.contacts.basic_api.archive(contact_id=contato_id)
-            print(f"🗑️ Contato ID {contato_id} removido com sucesso do HubSpot.")
-            return True
-        except Exception as e:
-            print(f"❌ Erro ao deletar contato ID {contato_id} no HubSpot: {e}")
-            return False
+            print(f"Erro na análise do Gemini: {e}")
+            return "ERRO"
