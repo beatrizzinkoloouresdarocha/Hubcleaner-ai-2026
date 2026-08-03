@@ -5,7 +5,7 @@ import sys
 import time
 from typing import Optional
 
-# 1. Ajuste do sys.path (importante se os módulos estiverem na raiz do projeto)
+# 1. Ajuste no sys.path para evitar ModuleNotFoundError ao executar o script diretamente
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
@@ -15,11 +15,12 @@ from google.genai import types
 from google.genai.errors import ClientError
 from pydantic import BaseModel, Field
 
-# Módulos do seu projeto
+# Módulos do projeto
 from discord_service import enviar_alerta_discord
 from hubspot_service import atualizar_contato_hubspot, buscar_contatos_hubspot
 
 client = genai.Client()
+
 MODELO = "gemini-2.0-flash"
 
 
@@ -45,6 +46,10 @@ def limpar_valores_nulos(dicionario: dict) -> dict:
 
 
 def analisar_contato_opcional(dados_contato: dict) -> tuple[dict, bool]:
+    """Analisa o contato no Gemini.
+
+    Retorna uma tupla: (payload_hubspot, stop_execution)
+    """
     prompt = f"""
     Análise os dados abaixo e retorne APENAS os campos que precisam de correção/padronização.
     Para campos corretos, retorne null.
@@ -71,11 +76,13 @@ def analisar_contato_opcional(dados_contato: dict) -> tuple[dict, bool]:
                 print(
                     f"⚠️ Cota do Gemini excedida (429). Tentativa {tentativa + 1}/{max_tentativas}."
                 )
+
                 if "QuotaExceeded" in str(e) or "FreeTier" in str(e):
                     print(
                         "⛔ Cota diária/projeto do Free Tier atingida. Interrompendo execução."
                     )
                     return {}, True
+
                 print("⏳ Aguardando 15s para estabilizar o limite de RPM...")
                 time.sleep(15)
             else:
@@ -88,11 +95,10 @@ def analisar_contato_opcional(dados_contato: dict) -> tuple[dict, bool]:
     return {}, False
 
 
-# 📍 COLE A SUA NOVA FUNÇÃO AQUI:
 def executar_limpeza_contatos(limite_testes: Optional[int] = None):
     print("🚀 Iniciando varredura no HubCleaner AI...")
 
-    # 1. Tratamento isolado para a busca inicial de contatos
+    # Tratamento isolado para a busca inicial de contatos
     try:
         contatos = buscar_contatos_hubspot()
     except Exception as e:
@@ -120,14 +126,14 @@ def executar_limpeza_contatos(limite_testes: Optional[int] = None):
         if payload_hubspot:
             print(f"📝 Atualizações identificadas: {payload_hubspot}")
 
-            # 2. Tratamento isolado para atualização no HubSpot
+            # Tratamento isolado para atualização no HubSpot
             try:
                 atualizar_contato_hubspot(contato_id, payload_hubspot)
                 print(f"✅ Contato {contato_id} atualizado no HubSpot com sucesso.")
             except Exception as e:
                 print(f"⚠️ Falha ao atualizar o contato {contato_id} no HubSpot: {e}")
 
-            # 3. Tratamento isolado para notificação no Discord
+            # Tratamento isolado para notificação no Discord
             try:
                 enviar_alerta_discord(contato_id, email, payload_hubspot)
                 print(f"📢 Alerta do contato {contato_id} enviado ao Discord.")
@@ -141,6 +147,5 @@ def executar_limpeza_contatos(limite_testes: Optional[int] = None):
         time.sleep(5)
 
 
-# 📍 BLOCO DE EXECUÇÃO FINAL
 if __name__ == "__main__":
     executar_limpeza_contatos(limite_testes=2)

@@ -1,31 +1,34 @@
 import os
-from hubspot import HubSpot
-from hubspot.crm.contacts import SimplePublicObjectInputForCreate
+import requests
+from dotenv import load_dotenv
 
-class HubSpotService:
-    def __init__(self):
-        # Conecta na API usando o token salvo no arquivo .env
-        self.access_token = os.getenv("HUBSPOT_ACCESS_TOKEN")
-        self.client = HubSpot(access_token=self.access_token)
+load_dotenv()
 
-    def buscar_contatos(self, limit=50):
-        """Busca os contatos mais recentes no HubSpot CRM."""
-        try:
-            response = self.client.crm.contacts.basic_api.get_page(
-                limit=limit,
-                properties=["firstname", "lastname", "email", "phone", "hs_object_id"]
-            )
-            return response.results
-        except Exception as e:
-            print(f"Erro ao buscar contatos no HubSpot: {e}")
-            return []
+HUBSPOT_API_KEY = os.getenv("HUBSPOT_ACCESS_TOKEN")
+HEADERS = {
+    "Authorization": f"Bearer {HUBSPOT_API_KEY}",
+    "Content-Type": "application/json"
+}
 
-    def deletar_contato(self, contact_id):
-        """Deleta um contato pelo ID no HubSpot."""
-        try:
-            self.client.crm.contacts.basic_api.archive(contact_id=contact_id)
-            print(f"Contato {contact_id} removido com sucesso!")
-            return True
-        except Exception as e:
-            print(f"Erro ao deletar contato {contact_id}: {e}")
-            return False
+def buscar_contatos_hubspot():
+    url = "https://api.hubapi.com/crm/v3/objects/contacts"
+    params = {"limit": 10, "properties": "firstname,lastname,email,phone"}
+    try:
+        res = requests.get(url, headers=HEADERS, params=params)
+        if res.status_code == 200:
+            return res.json().get("results", [])
+        print(f"❌ Erro HubSpot ao buscar contatos: {res.status_code} - {res.text}")
+        return []
+    except Exception as e:
+        print(f"❌ Exceção ao conectar no HubSpot: {e}")
+        return []
+
+def atualizar_contato_hubspot(contato_id: str, propriedades: dict):
+    url = f"https://api.hubapi.com/crm/v3/objects/contacts/{contato_id}"
+    payload = {"properties": propriedades}
+    try:
+        res = requests.patch(url, headers=HEADERS, json=payload)
+        return res.status_code in [200, 204]
+    except Exception as e:
+        print(f"❌ Erro ao atualizar contato {contato_id}: {e}")
+        return False
