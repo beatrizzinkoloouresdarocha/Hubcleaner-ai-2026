@@ -1,29 +1,29 @@
 import os
-import time
-from google import genai
+from hubspot import HubSpot
 
-class AIService:
+class HubSpotService:
     def __init__(self):
-        self.client = genai.Client()
+        token = os.getenv("HUBSPOT_ACCESS_TOKEN")
+        self.client = HubSpot(access_token=token)
 
-    def analisar_contato(self, contato):
-        prompt = f"""
-        Analise o seguinte contato do CRM e determine se o e-mail ou dados parecem ser um teste, inválidos ou spam:
-        - Nome: {contato.get('firstname', '')} {contato.get('lastname', '')}
-        - Email: {contato.get('email', '')}
-
-        Responda apenas com:
-        - 'MANTER' se o contato parecer legítimo.
-        - 'REMOVER' se for spam, teste ou e-mail inválido.
-        """
-
+    def buscar_contatos(self):
         try:
-            time.sleep(12)  # Pausa para respeitar o limite de requisições/minuto
-            response = self.client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt,
+            # Solicita explicitamente os campos de e-mail e nome
+            api_response = self.client.crm.contacts.get_all(
+                properties=["email", "firstname", "lastname"]
             )
-            return response.text.strip()
+            
+            contatos_formatados = []
+            for contato in api_response:
+                props = contato.properties or {}
+                contatos_formatados.append({
+                    "id": contato.id,
+                    "email": props.get("email", ""),
+                    "firstname": props.get("firstname", ""),
+                    "lastname": props.get("lastname", "")
+                })
+            
+            return contatos_formatados
         except Exception as e:
-            print(f"Erro na análise do Gemini: {e}")
-            return "ERRO"
+            print(f"Erro ao buscar contatos no HubSpot: {e}")
+            return []
